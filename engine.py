@@ -12,7 +12,10 @@ import torch
 import util.misc as utils
 from datasets.coco_eval import CocoEvaluator
 from datasets.panoptic_eval import PanopticEvaluator
-
+import onnx
+import onnxruntime as ort
+import numpy as np
+from torchvision.transforms import Resize 
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
@@ -68,6 +71,8 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, output_dir):
     model.eval()
     criterion.eval()
+    onnx_model = onnx.load('detr_r50_608.onnx')
+    ort_session = ort.InferenceSession('detr_r50_608.onnx', providers=['CUDAExecutionProvider'])
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('class_error', utils.SmoothedValue(window_size=1, fmt='{value:.2f}'))
@@ -86,10 +91,18 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         )
 
     for samples, targets in metric_logger.log_every(data_loader, 10, header):
+        torch_resize = Resize([608,608])
+        samples.tensors = torch_resize(samples.tensors)
+        samples.mask = torch_resize(samples.mask)
+        ort_img_cpu = samples.tensors
+        ort_img_np = np.around(ort_img_cpu.numpy(), 4)
+        onnx_outputs = ort_session.run(None, {'img': ort_img_np})
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
         outputs = model(samples)
+        out_onnx = {}
+        
         loss_dict = criterion(outputs, targets)
         weight_dict = criterion.weight_dict
 
