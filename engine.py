@@ -100,10 +100,26 @@ def evaluate(model, criterion, postprocessors, data_loader, base_ds, device, out
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-        outputs = model(samples)
+        # outputs = model(samples) #使用pth模型统计精度
         out_onnx = {}
-        
+        out_onnx['pred_logits'] = torch.from_numpy(onnx_outputs[0])
+        out_onnx['pred_logits'] = out_onnx['pred_logits'].to('cuda')
+        out_onnx['pred_boxes'] = torch.from_numpy(onnx_outputs[1])
+        out_onnx['pred_boxes'] = out_onnx['pred_boxes'].to('cuda')
+
+        out_onnx['aux_outputs'] = []
+        for i in range(5):
+            scale_pred_logits = torch.from_numpy(onnx_outputs[2+i*2])
+            scale_pred_logits = scale_pred_logits.to('cuda')
+            scale_pred_boxes = torch.from_numpy(onnx_outputs[2+i*2+1])
+            scale_pred_boxes = scale_pred_boxes.to('cuda')
+            temp_aux = {'pred_logits':scale_pred_logits, 'pred_boxes': scale_pred_boxes}
+            out_onnx['aux_outputs'].append(temp_aux)
+
+        outputs = out_onnx  #使用onnx模型统计精度
         loss_dict = criterion(outputs, targets)
+
+
         weight_dict = criterion.weight_dict
 
         # reduce losses over all GPUs for logging purposes
