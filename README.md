@@ -8,6 +8,6 @@ segformer_pt1.11
  python export_onnx.py 
 
 
- ## test精度（pth）
+ ## test精度（onnx）
 
  python main.py
